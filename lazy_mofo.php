@@ -423,6 +423,7 @@ class lazy_mofo{
 
         // format list of fields from posted data
         $sql_fields = '';
+        $prev_key = '';
         foreach($_POST as $key => $val){
 
             // checkboxes require a special hidden field to identify unchecked values
@@ -446,6 +447,7 @@ class lazy_mofo{
         // format list of values from posted data
         $sql_param = array();
         $sql_values = '';
+        $prev_key = '';
         foreach($_POST as $key => $val){
 
             // don't allow updates on certain fields
@@ -566,7 +568,7 @@ class lazy_mofo{
 
         // optimization
         $run_upload = false;
-        foreach($input_control as $column_name => $ctrl)
+        foreach(array_keys($input_control) as $column_name)
             if($this->is_upload($input_control, $column_name))
                 $run_upload = true;
 
@@ -574,7 +576,7 @@ class lazy_mofo{
         $arr_identity_id = array();
         $prev_identity_id = 0;
         $post = array_merge($_POST, $_FILES);
-        foreach($post as $key => $val){
+        foreach(array_keys($post) as $key){
             
             if(!mb_strstr($key, '-'))
                 continue;    
@@ -600,7 +602,7 @@ class lazy_mofo{
             $sql_param[':identity_id'] = $identity_id;
 
             // loop thur editable columns
-            foreach($input_control as $column_name => $control){
+            foreach(array_keys($input_control) as $column_name ){
 
                 if(array_search($column_name, $columns) === false)
                     continue;
@@ -890,6 +892,7 @@ class lazy_mofo{
             $sql = rtrim($sql, '; '); // remove last semicolon
             
             // try to remove last 'order by'. we need to allow functions in order by and order by in subqueries
+            $matches = [];
             $this->mb_preg_match_all('/order\s+by\s/im', $sql, $matches, PREG_OFFSET_CAPTURE);
             if(count($matches) > 0){
                 $match = end($matches[0]);
@@ -1484,9 +1487,7 @@ class lazy_mofo{
 
 
     function clean_out($str, $ellipse_at = 0){
-
         // purpose: escape html output w/ optional ellipsing
-
         if(is_array($str))
             $str = implode($this->delim, $str);
         elseif($ellipse_at > 0)
@@ -1495,18 +1496,14 @@ class lazy_mofo{
 
         // remove illegal characters
         $str = mb_convert_encoding($str, $this->charset, mb_detect_encoding($str));
-
         return htmlspecialchars($str, ENT_QUOTES, $this->charset);
     }
 
 
     function date_in($str, $use_time = false){
-
         // purpose: convert local format to database format
-
         if($str == '')
             return;
-
         // remove spaces between slash or dash delimiters. allow user to be a little sloppy.
         $str = preg_replace('/([0-9]+)\s?([\/\-]){1}\s?([0-9]+)\s?([\/\-]){1}\s?([0-9]+)/', '\1\2\3\4\5', $str);
 
@@ -1564,10 +1561,9 @@ class lazy_mofo{
 
         // purpose: get the action/command on what function to call
         // submit buttons can be named with the action i.e. "__update" or "__delete";
-        // look at the names/key posted to see if there's an action requested
+        // look at the names/key posted to see if there's an actiomb_substrn requested
 
-        static $action;
-
+        static $action=null;
         if(isset($action))
             return $action;
 
@@ -1576,12 +1572,11 @@ class lazy_mofo{
         if(mb_strlen(@$post_get['action']) > 0)
             return $post_get['action'];
 
-        foreach($post_get as $key => $val)
+        foreach(array_keys($post_get) as $key)
             if(mb_substr($key, 0, 2) == '__')
                 return mb_substr($key, 2);
 
     }
-
 
     function get_input_control($column_name, $value, $control, $called_from, &$validate = array()){
 
@@ -1642,9 +1637,11 @@ class lazy_mofo{
         elseif($type == 'number')
             return "<input type='text' name='$column_name' class='$class' value='" . $this->clean_out($value) . "' size='18' $max_length placeholder='$validate_placeholder'>$validate_error_msg $validate_placeholder_alternative";
         elseif($type == 'date')
-            return "<input type='text' name='$column_name' class='$class' value='" . $this->date_out($value) . "' size='18' $max_length placeholder='$validate_placeholder'>$validate_error_msg $validate_placeholder_alternative";
+            return "<input type='date' name='$column_name' class='$class' value='" . $value . "' size='18' $max_length placeholder='$validate_placeholder'>$validate_error_msg $validate_placeholder_alternative";
         elseif($type == 'datetime')
             return "<input type='text' name='$column_name' class='$class' value='" . $this->date_out($value, true) . "' size='18' $max_length placeholder='$validate_placeholder'>$validate_error_msg $validate_placeholder_alternative";
+         elseif($type == 'time')
+            return "<input type='time' name='$column_name' class='$class' value='" . $this->date_out($value, true) . "' size='18' $max_length placeholder='$validate_placeholder'>$validate_error_msg $validate_placeholder_alternative";
         elseif($type == 'textarea')
             return "<textarea name='$column_name' class='$class' cols='60' rows='6' placeholder='$validate_placeholder'>" . $this->clean_out($value) . "</textarea>$validate_error_msg $validate_placeholder_alternative";
         elseif($type == 'readonly_datetime')
@@ -1742,6 +1739,7 @@ class lazy_mofo{
         $sql = rtrim($sql, "\r\n\t; ");
 
         // try to remove last 'order by'. we need to allow functions in order by and order by in subqueries
+        $matches = [];
         $this->mb_preg_match_all('/order\s+by\s/im', $sql, $matches, PREG_OFFSET_CAPTURE);
         if(count($matches) > 0){
             $match = end($matches[0]);
@@ -1750,6 +1748,7 @@ class lazy_mofo{
         $sql .= ' limit 0 ';                                    // add limit
 
         $sth = $this->dbh->prepare($sql);
+        $columns = array();
         if(!$sth->execute($sql_param)){
             $arr = $sth->errorInfo();
             $error = $arr[2];
@@ -1758,7 +1757,6 @@ class lazy_mofo{
         }
 
         $i = 0;
-        $columns = array();
         while($column = $sth->getColumnMeta($i++))
             array_push($columns, $column['name']);
 
@@ -2112,6 +2110,7 @@ class lazy_mofo{
             $prefix = mb_substr($file_name, 0, mb_strlen($file_name) - mb_strlen($ext) - 1);
 
             // extract and increment number at the end of the prefix
+            $matches = [];
             preg_match('/_([0-9]+)$/', $prefix, $matches);
             if(count($matches) == 2){
                 $prefix = mb_substr($prefix, 0, mb_strlen($prefix) - mb_strlen($matches[0]));
@@ -2417,7 +2416,7 @@ class lazy_mofo{
         static $results = array();
         static $miss = 0;
         $max = 6;
-        $cnt = count($results);
+        //$cnt = count($results);
 
         // things aren't working out, just run the query, skip searching cache
         if($miss > $max)
@@ -2620,7 +2619,7 @@ class lazy_mofo{
            
         // header row    
         $column_index = 0;
-        foreach($columns as $key => $val)
+        foreach(array_values($columns) as $val)
             echo $this->export_escape($val, $column_index++);
 
         echo "\n";
